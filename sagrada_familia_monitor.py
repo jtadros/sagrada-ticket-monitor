@@ -69,7 +69,19 @@ def check_headout():
         f"https://api.headout.com/api/v7/tour-groups/{TOUR_GROUP_ID}/inventories"
         f"?from-date={TARGET_DATE}&to-date={day_after}"
     )
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/json",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Origin": "https://www.headout.com",
+            "Referer": "https://www.headout.com/",
+        },
+    )
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.load(resp)
 
