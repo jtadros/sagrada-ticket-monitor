@@ -1,7 +1,9 @@
 name: Sagrada Familia ticket monitor
 
-# A single job runs an internal loop that checks every 3 minutes for ~5.8 hours,
-# so the real cadence does NOT depend on GitHub's (unreliable) cron timing.
+# A single job runs an internal loop for ~5.8 hours, so the real cadence does NOT
+# depend on GitHub's (unreliable) cron timing. Cadence:
+#   - every 1 minute during the burst window: 08:55-09:10 Africa/Cairo (daily)
+#   - every 10 minutes otherwise
 # The schedule only needs to (re)start a fresh loop now and then; cancel-in-progress
 # keeps exactly one loop alive. Public repo => unlimited free Actions minutes.
 
@@ -20,7 +22,7 @@ jobs:
     timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
-      - name: Monitor loop (check every 3 min for ~5.8h)
+      - name: Monitor loop (1-min burst 08:55-09:10 Cairo, else 10-min)
         env:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
@@ -31,5 +33,15 @@ jobs:
           end=$(( $(date +%s) + 350*60 ))
           while [ "$(date +%s)" -lt "$end" ]; do
             python3 sagrada_familia_monitor.py --once || true
-            [ "$(date +%s)" -lt "$end" ] && sleep 180
+            [ "$(date +%s)" -ge "$end" ] && break
+            # Cairo wall-clock as HHMM (base-10 to avoid octal on leading zero).
+            cm=$((10#$(TZ=Africa/Cairo date +%H%M)))
+            # Burst window 08:55-09:10 Cairo -> every 60s. A 5-min run-up from
+            # 08:50 keeps the per-minute cadence locked in before 08:55 (a 10-min
+            # sleep could otherwise overshoot the window start).
+            if [ "$cm" -ge 850 ] && [ "$cm" -le 910 ]; then
+              sleep 60
+            else
+              sleep 600
+            fi
           done
