@@ -46,15 +46,17 @@ CHECK_INTERVAL_MIN = 5
 #   - the TEST_MODE env var / repo variable is not "false"
 #   - the current time is before TEST_MODE_UNTIL_UTC
 # After the cutoff, notifications fire only when the target slot is bookable.
-TEST_MODE_UNTIL_UTC = "2026-06-12T09:55:00+00:00"
+TEST_MODE_UNTIL_UTC = "2026-06-12T16:14:00+00:00"
 
-EMAIL_FROM = "john.tadros85@gmail.com"
-EMAIL_TO = ["john.tadros85@gmail.com", "diana.morkos85@gmail.com"]
+# Personal config comes from the environment (GitHub repo secrets) so this file
+# is safe to keep in a public repo. Locally, you can export the same vars.
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "")
+EMAIL_TO = [e.strip() for e in os.environ.get("EMAIL_TO", "").split(",") if e.strip()]
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 465
 SMTP_PASSWORD = os.environ["SMTP_PASSWORD"]  # Gmail app password (repo secret)
 
-NTFY_TOPIC = "sagrada_familia_ticket_monitor"  # subscribe to this in the ntfy app
+NTFY_TOPIC = os.environ.get("NTFY_TOPIC", "")  # ntfy push topic (repo secret)
 
 _UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -165,6 +167,9 @@ def check_official():
 
 # ── Notifications ────────────────────────────────────────────────────────────
 def send_email(subject, body):
+    if not (EMAIL_FROM and EMAIL_TO):
+        print("  email skipped (EMAIL_FROM/EMAIL_TO not configured)")
+        return
     msg = MIMEText(body)
     msg["Subject"] = subject
     msg["From"] = EMAIL_FROM
@@ -177,6 +182,9 @@ def send_email(subject, body):
 
 
 def send_push(title, message, priority="default"):
+    if not NTFY_TOPIC:
+        print("  push skipped (NTFY_TOPIC not configured)")
+        return
     req = urllib.request.Request(
         f"https://ntfy.sh/{NTFY_TOPIC}",
         data=message.encode(),

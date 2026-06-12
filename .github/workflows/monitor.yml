@@ -1,18 +1,35 @@
 name: Sagrada Familia ticket monitor
 
+# A single job runs an internal loop that checks every 3 minutes for ~5.8 hours,
+# so the real cadence does NOT depend on GitHub's (unreliable) cron timing.
+# The schedule only needs to (re)start a fresh loop now and then; cancel-in-progress
+# keeps exactly one loop alive. Public repo => unlimited free Actions minutes.
+
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes (UTC; GitHub may delay a few minutes under load)
-  workflow_dispatch: {}      # allows manual "Run workflow" button for testing
+    - cron: "*/15 * * * *"   # restart opportunities; GitHub honours these loosely
+  workflow_dispatch: {}
+
+concurrency:
+  group: sagrada-monitor
+  cancel-in-progress: true
 
 jobs:
-  check:
+  monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
-      - name: Check availability and notify
+      - name: Monitor loop (check every 3 min for ~5.8h)
         env:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TEST_MODE: ${{ vars.TEST_MODE || 'true' }}
-        run: python3 sagrada_familia_monitor.py --once
+        run: |
+          end=$(( $(date +%s) + 350*60 ))
+          while [ "$(date +%s)" -lt "$end" ]; do
+            python3 sagrada_familia_monitor.py --once || true
+            [ "$(date +%s)" -lt "$end" ] && sleep 180
+          done
