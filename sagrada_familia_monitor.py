@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sagrada Familia ticket monitor — July 5, 2026 @ 1:00 PM, Fast-Track Entry + Audio Guide.
+Sagrada Familia ticket monitor — Fast-Track Entry + Audio Guide.
 
 How it works (verified 2026-06-12):
 - Headout exposes an open JSON inventory API. tourId 21525 / variantId 68373 is the
@@ -24,20 +24,22 @@ import ssl
 import sys
 import time
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 
 # ── Configuration ────────────────────────────────────────────────────────────
-TARGET_DATE = "2026-07-05"          # YYYY-MM-DD
-TARGET_TIME = "13:00:00"            # 1:00 PM
+TARGET_DATE = "2026-06-27"          # YYYY-MM-DD
+TARGET_TIME = "09:00:00"            # 24h format (slot times are local Spain time)
 TOUR_GROUP_ID = 17925               # Headout: Sagrada Familia Fast-Track Tickets
 TOUR_ID = 21525                     # Headout: Fast-Track Entry + Audio Guide
 CHECK_INTERVAL_MIN = 5
 
-# TEST_MODE=true → email+push on EVERY check (to verify the plumbing works).
-# Set the TEST_MODE env var / repo variable to "false" once confirmed →
-# notifications only when the slot is bookable.
-TEST_MODE = os.environ.get("TEST_MODE", "true").strip().lower() != "false"
+# Test mode sends an email+push on EVERY check (to verify the plumbing works).
+# It is active only while BOTH are true:
+#   - the TEST_MODE env var / repo variable is not "false"
+#   - the current time is before TEST_MODE_UNTIL_UTC
+# After the cutoff, notifications fire only when the target slot is bookable.
+TEST_MODE_UNTIL_UTC = "2026-06-12T09:55:00+00:00"
 
 EMAIL_FROM = "john.tadros85@gmail.com"
 EMAIL_TO = ["john.tadros85@gmail.com", "diana.morkos85@gmail.com"]
@@ -46,6 +48,12 @@ SMTP_PORT = 465
 SMTP_PASSWORD = os.environ["SMTP_PASSWORD"]  # Gmail app password (repo secret)
 
 NTFY_TOPIC = "sagrada_familia_ticket_monitor"  # subscribe to this in the ntfy app
+
+# Human-readable labels derived from the target (e.g. "July 5, 2026", "9:00 AM")
+_d = datetime.strptime(TARGET_DATE, "%Y-%m-%d")
+_t = datetime.strptime(TARGET_TIME, "%H:%M:%S")
+DATE_LABEL = f"{_d.strftime('%B')} {_d.day}, {_d.year}"
+TIME_LABEL = f"{_t.hour % 12 or 12}:{_t.minute:02d} {'AM' if _t.hour < 12 else 'PM'}"
 
 BOOKING_URL = (
     f"https://www.headout.com/book/{TOUR_GROUP_ID}/select/"
@@ -58,6 +66,14 @@ MANUAL_LINKS = {
     ),
     "TicketSagradaFamilia (reseller)": "https://ticketsagradafamilia.com/",
 }
+
+
+def test_mode_active():
+    if os.environ.get("TEST_MODE", "true").strip().lower() == "false":
+        return False
+    cutoff = datetime.fromisoformat(TEST_MODE_UNTIL_UTC)
+    return datetime.now(timezone.utc) < cutoff
+
 
 # ── Checks ───────────────────────────────────────────────────────────────────
 def check_headout():
@@ -132,7 +148,7 @@ def manual_links_text():
 # ── Main loop ────────────────────────────────────────────────────────────────
 def run_check():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{now}] checking Headout for {TARGET_DATE} {TARGET_TIME[:5]} ...")
+    print(f"[{now}] checking Headout for {TARGET_DATE} {TIME_LABEL} ...")
     try:
         slots, remaining = check_headout()
     except Exception as e:
@@ -150,11 +166,11 @@ def run_check():
     print(slot_lines)
 
     if remaining > 0:
-        print(f"  *** TARGET SLOT AVAILABLE: {remaining} ticket(s) at 1:00 PM ***")
-        body = f"""SAGRADA FAMILIA — 1:00 PM TICKET AVAILABLE!
+        print(f"  *** TARGET SLOT AVAILABLE: {remaining} ticket(s) at {TIME_LABEL} ***")
+        body = f"""SAGRADA FAMILIA — {TIME_LABEL} TICKET AVAILABLE!
 
-Date: July 5, 2026
-Time: 1:00 PM
+Date: {DATE_LABEL}
+Time: {TIME_LABEL}
 Type: Fast-Track Entry + Audio Guide
 Tickets remaining: {remaining}
 
@@ -164,48 +180,55 @@ BOOK NOW (Headout):
 Also worth a quick manual check (bot-protected, can't verify automatically):
 {manual_links_text()}
 
-All July 5 slots on Headout right now:
+All {DATE_LABEL} slots on Headout right now:
 {slot_lines}
 
 Checked at {now}
 """
-        send_email("** SAGRADA FAMILIA 1:00 PM TICKET AVAILABLE - BOOK NOW! **", body)
+        send_email(
+            f"** SAGRADA FAMILIA {TIME_LABEL} TICKET AVAILABLE - BOOK NOW! **", body
+        )
         send_push(
-            "Sagrada Familia 1PM AVAILABLE!",
+            f"Sagrada Familia {TIME_LABEL} AVAILABLE!",
             f"{remaining} ticket(s) left on Headout - book now!",
             "urgent",
         )
-    elif TEST_MODE:
+    elif test_mode_active():
         body = f"""SAGRADA FAMILIA MONITOR — TEST MODE status report
 
 Checked at: {now}
-Searching for: July 5, 2026 at 1:00 PM — Fast-Track Entry + Audio Guide
+Searching for: {DATE_LABEL} at {TIME_LABEL} — Fast-Track Entry + Audio Guide
 
 Headout (checked automatically via API):
   URL: {BOOKING_URL}
-  1:00 PM slot: NOT currently available
-  All slots for July 5:
+  {TIME_LABEL} slot: NOT currently available
+  All slots for {DATE_LABEL}:
 {slot_lines}
 
 Bot-protected sites (cannot check automatically — use links to verify manually):
 {manual_links_text()}
 
-This is a TEST MODE email sent on every check. Set TEST_MODE = False in
-sagrada_familia_monitor.py to only get notified when the ticket is found.
+This is a TEST MODE email sent on every check. Test mode switches off
+automatically at {TEST_MODE_UNTIL_UTC} (UTC); after that you will only be
+notified when the ticket is found.
 """
-        send_email("[TEST MODE] Sagrada Familia monitor — no 1:00 PM ticket yet", body)
+        send_email(
+            f"[TEST MODE] Sagrada Familia monitor — no {TIME_LABEL} ticket yet", body
+        )
         send_push(
-            "No 1PM ticket yet",
+            f"No {TIME_LABEL} ticket yet",
             f"Headout checked at {now}. Slots: "
             + (", ".join(s["time"][:5] for s in slots) or "none"),
         )
+    else:
+        print("  not available; test mode off — no notification sent.")
 
 
 def main():
     print("Sagrada Familia Ticket Monitor")
-    print(f"  target : {TARGET_DATE} at {TARGET_TIME[:5]} (Fast-Track + Audio Guide)")
+    print(f"  target : {TARGET_DATE} at {TIME_LABEL} (Fast-Track + Audio Guide)")
     print(f"  source : Headout inventory API (tourId {TOUR_ID})")
-    print(f"  test mode: {TEST_MODE}")
+    print(f"  test mode active: {test_mode_active()}")
     if "--once" in sys.argv:
         run_check()
         return
