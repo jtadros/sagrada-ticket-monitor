@@ -46,7 +46,7 @@ CHECK_INTERVAL_MIN = 5
 #   - the TEST_MODE env var / repo variable is not "false"
 #   - the current time is before TEST_MODE_UNTIL_UTC
 # After the cutoff, notifications fire only when the target slot is bookable.
-TEST_MODE_UNTIL_UTC = "2026-06-12T16:14:00+00:00"
+TEST_MODE_UNTIL_UTC = "2026-06-12T17:11:00+00:00"
 
 # Personal config comes from the environment (GitHub repo secrets) so this file
 # is safe to keep in a public repo. Locally, you can export the same vars.
