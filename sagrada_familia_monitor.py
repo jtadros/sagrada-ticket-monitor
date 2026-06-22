@@ -261,8 +261,7 @@ def run_check():
         return
 
     headout_found = remaining > 0
-    official_found = official_status == "availability"
-    found = headout_found or official_found
+    official_day_open = official_status == "availability"
 
     blocks = (
         f"{_headout_block(slots, remaining, headout_err)}\n\n"
@@ -270,24 +269,19 @@ def run_check():
         f"GetYourGuide (manual — bot-protected):\n  {GYG_LINK}"
     )
 
-    if found:
-        which = []
-        if headout_found:
-            which.append(f"Headout ({remaining} at {TIME_LABEL})")
-        if official_found:
-            which.append("Official site (day open)")
-        print(f"  *** AVAILABLE: {', '.join(which)} ***")
+    if headout_found:
+        print(f"  *** AVAILABLE on Headout: {remaining} at {TIME_LABEL} ***")
         body = (
-            f"SAGRADA FAMILIA — TICKET AVAILABILITY!\n\n"
+            f"SAGRADA FAMILIA — TICKET AVAILABLE ON HEADOUT!\n\n"
             f"Date: {DATE_LABEL}\n"
             f"Looking for: {TIME_LABEL} — Fast-Track Entry + Audio Guide\n"
-            f"Available on: {', '.join(which)}\n\n"
+            f"Headout: {remaining} ticket(s) at {TIME_LABEL}\n\n"
             f"{blocks}\n\nChecked at {now}\n"
         )
-        send_email(f"** SAGRADA FAMILIA {DATE_LABEL} AVAILABLE - BOOK NOW! **", body)
+        send_email(f"** SAGRADA FAMILIA {TIME_LABEL} AVAILABLE - BOOK NOW! **", body)
         send_push(
             "Sagrada Familia AVAILABLE!",
-            f"{' + '.join(which)} — book now!",
+            f"Headout: {remaining} ticket(s) at {TIME_LABEL} — book now!",
             "urgent",
         )
     elif test_mode_active():
