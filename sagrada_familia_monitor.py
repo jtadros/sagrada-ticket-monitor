@@ -232,9 +232,9 @@ def _official_block(status, err):
 # ── Main loop ────────────────────────────────────────────────────────────────
 def run_check():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{now}] checking {TARGET_DATE} {TIME_LABEL} (Headout + Official) ...")
+    print(f"[{now}] checking {TARGET_DATE} {TIME_LABEL} (Headout) ...")
 
-    # Headout (hour-exact)
+    # Headout (hour-exact) — the only reliable automated source
     try:
         slots, remaining = check_headout()
         headout_err = None
@@ -242,31 +242,22 @@ def run_check():
         slots, remaining, headout_err = [], 0, str(e)
         print(f"  HEADOUT FAILED: {e}")
 
-    # Official site (day-level)
-    try:
-        official_status = check_official()
-        official_err = None
-    except Exception as e:
-        official_status, official_err = None, str(e)
-        print(f"  OFFICIAL FAILED: {e}")
-
     print("  " + _headout_block(slots, remaining, headout_err).replace("\n", "\n  "))
-    print("  " + _official_block(official_status, official_err).replace("\n", "\n  "))
 
-    if headout_err and official_err:
+    if headout_err:
         try:
-            send_push("Monitor error", "Both site checks failed.", "high")
+            send_push("Monitor error", "Headout check failed.", "high")
         except Exception:
             pass
         return
 
     headout_found = remaining > 0
-    official_day_open = official_status == "availability"
 
-    blocks = (
-        f"{_headout_block(slots, remaining, headout_err)}\n\n"
-        f"{_official_block(official_status, official_err)}\n\n"
-        f"GetYourGuide (manual — bot-protected):\n  {GYG_LINK}"
+    headout_block = _headout_block(slots, remaining, headout_err)
+    manual_links = (
+        f"Also check these sites manually:\n"
+        f"  Official site: {OFFICIAL_BOOKING_URL}\n"
+        f"  GetYourGuide:  {GYG_LINK}"
     )
 
     if headout_found:
@@ -276,7 +267,9 @@ def run_check():
             f"Date: {DATE_LABEL}\n"
             f"Looking for: {TIME_LABEL} — Fast-Track Entry + Audio Guide\n"
             f"Headout: {remaining} ticket(s) at {TIME_LABEL}\n\n"
-            f"{blocks}\n\nChecked at {now}\n"
+            f"{headout_block}\n\n"
+            f"{manual_links}\n\n"
+            f"Checked at {now}\n"
         )
         send_email(f"** SAGRADA FAMILIA {TIME_LABEL} AVAILABLE - BOOK NOW! **", body)
         send_push(
@@ -284,28 +277,13 @@ def run_check():
             f"Headout: {remaining} ticket(s) at {TIME_LABEL} — book now!",
             "urgent",
         )
-    elif official_day_open:
-        print(f"  *** Official site has availability for {DATE_LABEL} (day-level) ***")
-        body = (
-            f"SAGRADA FAMILIA — OFFICIAL SITE HAS AVAILABILITY FOR {DATE_LABEL}!\n\n"
-            f"The official website shows tickets available for {DATE_LABEL}.\n"
-            f"This is day-level only — it does NOT confirm {TIME_LABEL} specifically.\n"
-            f"Open the link below and check for the {TIME_LABEL} slot manually:\n\n"
-            f"  >> {OFFICIAL_BOOKING_URL}\n\n"
-            f"{blocks}\n\nChecked at {now}\n"
-        )
-        send_email(f"Sagrada Familia {DATE_LABEL} — official site has availability (check {TIME_LABEL} manually)", body)
-        send_push(
-            f"Official site: {DATE_LABEL} open",
-            f"Day-level availability — check {TIME_LABEL} manually: {OFFICIAL_BOOKING_URL}",
-            "high",
-        )
     elif test_mode_active():
         body = (
             f"SAGRADA FAMILIA MONITOR — TEST MODE status report\n\n"
             f"Checked at: {now}\n"
             f"Searching for: {DATE_LABEL} at {TIME_LABEL} — Fast-Track Entry + Audio Guide\n\n"
-            f"{blocks}\n\n"
+            f"{headout_block}\n\n"
+            f"{manual_links}\n\n"
             f"This is a TEST MODE email sent on every check. Test mode switches off\n"
             f"automatically at {TEST_MODE_UNTIL_UTC} (UTC); after that you will only be\n"
             f"notified when a ticket is found.\n"
@@ -313,8 +291,7 @@ def run_check():
         send_email(f"[TEST MODE] Sagrada Familia monitor — nothing for {TIME_LABEL} yet", body)
         send_push(
             f"No {TIME_LABEL} ticket yet",
-            f"Headout: {'avail' if headout_found else 'no'} | "
-            f"Official {DATE_LABEL}: {official_status or 'n/a'}",
+            f"Headout: no {TIME_LABEL} slot yet",
         )
     else:
         print("  not available; test mode off — no notification sent.")
@@ -323,7 +300,7 @@ def run_check():
 def main():
     print("Sagrada Familia Ticket Monitor")
     print(f"  target : {TARGET_DATE} at {TIME_LABEL} (Fast-Track + Audio Guide)")
-    print(f"  sources: Headout API (hour-exact) + Official site (day-level)")
+    print(f"  source : Headout API (hour-exact)")
     print(f"  test mode active: {test_mode_active()}")
     if "--once" in sys.argv:
         run_check()
