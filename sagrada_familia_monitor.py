@@ -71,7 +71,7 @@ CLORIAN_POS = "649"
 CLORIAN_SALES_GROUP = "1"
 CLORIAN_PRODUCT = "4375"
 CLORIAN_ORIGIN = "https://tickets.sagradafamilia.org"
-OFFICIAL_BOOKING_URL = "https://tickets.sagradafamilia.org/"
+OFFICIAL_BOOKING_URL = "https://tickets.sagradafamilia.org/en/1-individual/4375-sagrada-familia"
 
 # Human-readable labels derived from the target (e.g. "June 27, 2026", "9:00 AM")
 _d = datetime.strptime(TARGET_DATE, "%Y-%m-%d")
@@ -272,7 +272,7 @@ def run_check():
     if headout_found:
         print(f"  *** AVAILABLE on Headout: {remaining} at {TIME_LABEL} ***")
         body = (
-            f"SAGRADA FAMILIA — TICKET AVAILABLE ON HEADOUT!\n\n"
+            f"SAGRADA FAMILIA — {TIME_LABEL} TICKET FOUND ON HEADOUT!\n\n"
             f"Date: {DATE_LABEL}\n"
             f"Looking for: {TIME_LABEL} — Fast-Track Entry + Audio Guide\n"
             f"Headout: {remaining} ticket(s) at {TIME_LABEL}\n\n"
@@ -283,6 +283,22 @@ def run_check():
             "Sagrada Familia AVAILABLE!",
             f"Headout: {remaining} ticket(s) at {TIME_LABEL} — book now!",
             "urgent",
+        )
+    elif official_day_open:
+        print(f"  *** Official site has availability for {DATE_LABEL} (day-level) ***")
+        body = (
+            f"SAGRADA FAMILIA — OFFICIAL SITE HAS AVAILABILITY FOR {DATE_LABEL}!\n\n"
+            f"The official website shows tickets available for {DATE_LABEL}.\n"
+            f"This is day-level only — it does NOT confirm {TIME_LABEL} specifically.\n"
+            f"Open the link below and check for the {TIME_LABEL} slot manually:\n\n"
+            f"  >> {OFFICIAL_BOOKING_URL}\n\n"
+            f"{blocks}\n\nChecked at {now}\n"
+        )
+        send_email(f"Sagrada Familia {DATE_LABEL} — official site has availability (check {TIME_LABEL} manually)", body)
+        send_push(
+            f"Official site: {DATE_LABEL} open",
+            f"Day-level availability — check {TIME_LABEL} manually: {OFFICIAL_BOOKING_URL}",
+            "high",
         )
     elif test_mode_active():
         body = (
