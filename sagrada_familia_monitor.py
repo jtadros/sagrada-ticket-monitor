@@ -154,6 +154,7 @@ def check_official():
     url = (
         f"{CLORIAN_BASE}/catalog/salesGroups/{CLORIAN_SALES_GROUP}"
         f"/product/{CLORIAN_PRODUCT}/availability?month={d.month}&year={d.year}"
+        f"&venueId=1&minTickets=1"
     )
     av_req = urllib.request.Request(
         url,
@@ -232,9 +233,9 @@ def _official_block(status, err):
 # ── Main loop ────────────────────────────────────────────────────────────────
 def run_check():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{now}] checking {TARGET_DATE} {TIME_LABEL} (Headout) ...")
+    print(f"[{now}] checking {TARGET_DATE} {TIME_LABEL} (Headout + Official) ...")
 
-    # Headout (hour-exact) — the only reliable automated source
+    # Headout (hour-exact)
     try:
         slots, remaining = check_headout()
         headout_err = None
@@ -242,39 +243,52 @@ def run_check():
         slots, remaining, headout_err = [], 0, str(e)
         print(f"  HEADOUT FAILED: {e}")
 
-    print("  " + _headout_block(slots, remaining, headout_err).replace("\n", "\n  "))
+    # Official site (day-level, now with correct params)
+    try:
+        official_status = check_official()
+        official_err = None
+    except Exception as e:
+        official_status, official_err = None, str(e)
+        print(f"  OFFICIAL FAILED: {e}")
 
-    if headout_err:
+    print("  " + _headout_block(slots, remaining, headout_err).replace("\n", "\n  "))
+    print("  " + _official_block(official_status, official_err).replace("\n", "\n  "))
+
+    if headout_err and official_err:
         try:
-            send_push("Monitor error", "Headout check failed.", "high")
+            send_push("Monitor error", "Both site checks failed.", "high")
         except Exception:
             pass
         return
 
     headout_found = remaining > 0
+    official_found = official_status == "availability"
+    found = headout_found or official_found
 
-    headout_block = _headout_block(slots, remaining, headout_err)
-    manual_links = (
-        f"Also check these sites manually:\n"
-        f"  Official site: {OFFICIAL_BOOKING_URL}\n"
-        f"  GetYourGuide:  {GYG_LINK}"
+    blocks = (
+        f"{_headout_block(slots, remaining, headout_err)}\n\n"
+        f"{_official_block(official_status, official_err)}\n\n"
+        f"GetYourGuide (manual — bot-protected):\n  {GYG_LINK}"
     )
 
-    if headout_found:
-        print(f"  *** AVAILABLE on Headout: {remaining} at {TIME_LABEL} ***")
+    if found:
+        which = []
+        if headout_found:
+            which.append(f"Headout ({remaining} at {TIME_LABEL})")
+        if official_found:
+            which.append("Official site (day-level)")
+        print(f"  *** AVAILABLE: {', '.join(which)} ***")
         body = (
-            f"SAGRADA FAMILIA — {TIME_LABEL} TICKET FOUND ON HEADOUT!\n\n"
+            f"SAGRADA FAMILIA — TICKET AVAILABILITY!\n\n"
             f"Date: {DATE_LABEL}\n"
             f"Looking for: {TIME_LABEL} — Fast-Track Entry + Audio Guide\n"
-            f"Headout: {remaining} ticket(s) at {TIME_LABEL}\n\n"
-            f"{headout_block}\n\n"
-            f"{manual_links}\n\n"
-            f"Checked at {now}\n"
+            f"Available on: {', '.join(which)}\n\n"
+            f"{blocks}\n\nChecked at {now}\n"
         )
-        send_email(f"** SAGRADA FAMILIA {TIME_LABEL} AVAILABLE - BOOK NOW! **", body)
+        send_email(f"** SAGRADA FAMILIA {DATE_LABEL} AVAILABLE - BOOK NOW! **", body)
         send_push(
             "Sagrada Familia AVAILABLE!",
-            f"Headout: {remaining} ticket(s) at {TIME_LABEL} — book now!",
+            f"{' + '.join(which)} — book now!",
             "urgent",
         )
     elif test_mode_active():
@@ -282,8 +296,7 @@ def run_check():
             f"SAGRADA FAMILIA MONITOR — TEST MODE status report\n\n"
             f"Checked at: {now}\n"
             f"Searching for: {DATE_LABEL} at {TIME_LABEL} — Fast-Track Entry + Audio Guide\n\n"
-            f"{headout_block}\n\n"
-            f"{manual_links}\n\n"
+            f"{blocks}\n\n"
             f"This is a TEST MODE email sent on every check. Test mode switches off\n"
             f"automatically at {TEST_MODE_UNTIL_UTC} (UTC); after that you will only be\n"
             f"notified when a ticket is found.\n"
@@ -291,7 +304,8 @@ def run_check():
         send_email(f"[TEST MODE] Sagrada Familia monitor — nothing for {TIME_LABEL} yet", body)
         send_push(
             f"No {TIME_LABEL} ticket yet",
-            f"Headout: no {TIME_LABEL} slot yet",
+            f"Headout: {'avail' if headout_found else 'no'} | "
+            f"Official {DATE_LABEL}: {official_status or 'n/a'}",
         )
     else:
         print("  not available; test mode off — no notification sent.")
@@ -300,7 +314,7 @@ def run_check():
 def main():
     print("Sagrada Familia Ticket Monitor")
     print(f"  target : {TARGET_DATE} at {TIME_LABEL} (Fast-Track + Audio Guide)")
-    print(f"  source : Headout API (hour-exact)")
+    print(f"  sources: Headout API (hour-exact) + Official site (day-level)")
     print(f"  test mode active: {test_mode_active()}")
     if "--once" in sys.argv:
         run_check()
